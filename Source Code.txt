@@ -1,0 +1,89 @@
+// Smart Energy Theft Detection System Code
+// (ESP32 + IoT + Blynk + Telegram)
+
+#define BLYNK_TEMPLATE_ID "TMPL3Alo2K6lO"
+#define BLYNK_TEMPLATE_NAME "Energy Meter"
+#define BLYNK_AUTH_TOKEN "YOUR_BLYNK_TOKEN"
+
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <UniversalTelegramBot.h>
+#include <BlynkSimpleEsp32.h>
+
+// WiFi Credentials
+const char* ssid = "YOUR_WIFI";
+const char* pass = "YOUR_PASSWORD";
+
+// Telegram
+#define BOT_TOKEN "YOUR_BOT_TOKEN"
+#define CHAT_ID   "YOUR_CHAT_ID"
+
+// Pins
+#define CURRENT_PIN 34
+#define RELAY_PIN   27
+#define BUZZER_PIN  25
+
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+float voltage = 230.0;
+float sensitivity = 0.185;
+
+#define LOW_CURRENT_LIMIT 0.10
+#define CONFIRM_TIME 3000
+
+bool theftTriggered = false;
+unsigned long lowStart = 0;
+
+WiFiClientSecure client;
+UniversalTelegramBot bot(BOT_TOKEN, client);
+
+float readCurrent() {
+  return analogRead(CURRENT_PIN) * 0.001; // simplified
+}
+
+void sendAlert() {
+  bot.sendMessage(CHAT_ID, "⚡ Theft Detected! Power Cut!", "");
+}
+
+void setup() {
+  Serial.begin(115200);
+  pinMode(RELAY_PIN, OUTPUT);
+  pinMode(BUZZER_PIN, OUTPUT);
+
+  WiFi.begin(ssid, pass);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+  }
+
+  client.setInsecure();
+  lcd.init();
+  lcd.backlight();
+}
+
+void loop() {
+  float current = readCurrent();
+
+  if (current < LOW_CURRENT_LIMIT) {
+    if (lowStart == 0) lowStart = millis();
+
+    if (millis() - lowStart > CONFIRM_TIME && !theftTriggered) {
+      theftTriggered = true;
+
+      digitalWrite(BUZZER_PIN, HIGH);
+      digitalWrite(RELAY_PIN, LOW);
+
+      sendAlert();
+
+      lcd.clear();
+      lcd.print("THEFT DETECTED!");
+    }
+  } else {
+    lowStart = 0;
+    lcd.clear();
+    lcd.print("Normal");
+  }
+
+  delay(1000);
+}
